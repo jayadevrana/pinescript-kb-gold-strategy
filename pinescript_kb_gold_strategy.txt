@@ -1,0 +1,203 @@
+//@version=5
+
+strategy(title="KB#_GOLD", shorttitle="KB#_GOLD", overlay=true)
+
+// Trade Settings
+systemMode = input.string("Positional", "System Mode", options=["Positional", "Intraday"])
+startSession = input.session("0915-1445", "Start Session")
+endSession = input.session("1500-1515", "End Session")
+entryFilter = input.float(1.2, "Entry Filter",inline = "x")
+forex = input(true ,"Forex ?" ,inline = "x")
+exitFilter = input.float(1.2, "Exit Filter")
+showBuySell = input.bool(true, "Show BUY/SELL?")
+showRangeExit = input.bool(false, "Show Range EXIT?")
+showBuySellConfirmation = input.bool(false, "Show Buy/Sell Confirmation?")
+
+// KB Breakout Settings
+nnBreakoutExMode = input.bool(false, "KB Breakout Ex-Mode?",group = "KB Breakout Settings")
+
+// Trade Setup
+// tradeSetup = input.string("Long", "Trade Setup", options=["Long", "Short"],group = "Trade Setup")
+// tradeIn = input.string("Futures", "Trade in", options=["Futures", "Options"],group = "Trade Setup")
+long = input(true,"Long",inline = "x1",group = "Trade Setup")
+short = input(true,"Short",inline = "x1",group = "Trade Setup")
+trade_in = input(false,"<<||>> Trade in:",inline = "x1",group = "Trade Setup")
+futures = input(false,"Futures",inline = "x1",group = "Trade Setup")
+options = input(false,"Options",inline = "x1",group = "Trade Setup")
+sellOptions = input.bool(false, "Sell Options...?",inline = "x1",group = "Trade Setup")
+strategyType = input.string("STG1", "Strategy Type:",inline = "x2",group = "Trade Setup")
+quantity = input.int(1, "Quantity",inline = "x2",group = "Trade Setup")
+
+// Strike Type
+//strikeType = input.string("ATM", "Strike Type", options=["ITM", "ATM", "OTM"])
+itm = input(false,"ITM",inline = "x3",group = 'Strike Type')
+atm = input(true,"ATM",inline = "x3",group = 'Strike Type')
+otm = input(false,"OTM",inline = "x3",group = 'Strike Type')
+
+// Main script logic would go here
+// ...
+
+// Example plotting
+plot(series=close, color=color.blue, title="Closing Price")
+emaplot = input (true, title="Fast EMA on chart")
+len = input(50,  title="ema Length")
+src = close
+out = ta.ema(src, len)
+mycolor =  color.blue
+
+
+
+smaplot = input (false, title="Slow EMA on chart")
+len2 = input(100,  title="ema Length")
+src2 = close
+out2 = ta.ema(src2, len2)
+mycolor2 = color.red
+
+plot(out, "out", style=plot.style_line, linewidth=2, color=color.blue)
+plot(out2, "out2", style=plot.style_line, linewidth=2, color=color.orange)
+
+//gk
+BuyCondition = ta.crossover(out, out2)
+SellCondition = ta.crossunder(out, out2)
+
+//length = input(title='Length', defval=5)
+length = 9
+//factor = input.float(title='Factor', minval=0, maxval=1, defval=0.7)
+factor = 0.7
+highlightMovements = input(title='Highlight Movements ?', defval=true)
+//src = input(title='Source', defval=close)
+//src = close
+
+gd(src, length) =>
+    ta.ema(src, length) * (1 + factor) - ta.ema(ta.ema(src, length), length) * factor
+
+t3 = gd(gd(gd(src, length), length), length)
+
+t3Color = highlightMovements ? t3 > t3[1] ? color.green : color.red : #6d1e7f
+
+//
+if nnBreakoutExMode
+    BuyCondition := close > t3 and close[1] < t3[1]
+    SellCondition := close < t3 and close[1] > t3[1]
+
+
+last_signal = 0
+Buy_final = BuyCondition and (nz(last_signal[1]) == 0 or nz(last_signal[1]) == -1)
+Sell_final = SellCondition and (nz(last_signal[1]) == 0 or nz(last_signal[1]) == 1)
+last_signal := Buy_final ? 1 : Sell_final ? -1 : last_signal[1]
+
+plotshape(Buy_final, style=shape.triangleup, location=location.belowbar, color=color.new(#0814BF, 0), size=size.small)
+plotshape(Sell_final, style=shape.triangledown, location=location.abovebar, color=color.new(#BF0000, 0), size=size.small)
+
+BuyHigh = ta.valuewhen(Buy_final, high, 0)
+ShortLow = ta.valuewhen(Sell_final, low, 0)
+
+eBuy = last_signal > 0 and close > BuyHigh
+eShort = last_signal < 0 and close < ShortLow
+
+LastSignal = 0
+Buy = eBuy and (nz(LastSignal[1]) == 0 or nz(LastSignal[1]) == -1)
+Short = eShort and (nz(LastSignal[1]) == 0 or nz(LastSignal[1]) == 1)
+LastSignal := Buy ? 1 : Short ? -1 : LastSignal[1]
+
+buyprice = ta.valuewhen(Buy, high, 0)
+sellprice = ta.valuewhen(Short, low, 0)
+
+bfirm = ta.crossover(close, buyprice)
+sfirm = ta.crossunder(close, sellprice)
+
+Exrem_Buy_Sell(BUY,SELL) =>
+
+    buycond = BUY and BUY[1]==0
+    sellcond = SELL and SELL[1]==0
+
+    bullish = ta.barssince(buycond) < ta.barssince(sellcond)
+    bearish = ta.barssince(sellcond) < ta.barssince(buycond)
+
+    buym = bearish[1]and buycond
+    sellm = bullish[1] and sellcond
+
+    [buym,sellm]
+
+[cbuy,ccb] = Exrem_Buy_Sell(bfirm,Buy)
+[csell,ccs] = Exrem_Buy_Sell(sfirm,Short)
+
+plotshape(Buy, style=shape.labelup, location=location.belowbar, color=color.new(#0814BF, 0), title='Buy label', text='X', textcolor=color.new(color.white, 0))
+plotshape(Short, style=shape.labeldown, location=location.abovebar, color=color.new(#BF0000, 0), title='Sell label', text='X', textcolor=color.new(color.white, 0))
+
+//plotshape(cbuy, style=shape.labelup, location=location.belowbar, color=color.new(#0814BF, 0), title='Buy label', text='BUY', textcolor=color.new(color.white, 0))
+//plotshape(csell, style=shape.labeldown, location=location.abovebar, color=color.new(#BF0000, 0), title='Sell label', text='SELL', textcolor=color.new(color.white, 0))
+
+round_price = input(5.0)
+
+high_price = round_price*math.ceil(high/round_price)
+low_price = round_price*math.ceil(low/round_price)
+
+if Buy
+    strategy.entry("buy",strategy.long,stop = high_price + entryFilter)
+
+if Short
+    strategy.entry("sell",strategy.short , stop = low_price-entryFilter)
+
+if systemMode == "Intraday" and  time(timeframe.period, endSession)
+    strategy.close_all()
+
+bgcolor(strategy.position_size > 0 ? color.lime :na,transp = 71)
+bgcolor(strategy.position_size < 0 ? color.red :na,transp = 71)
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+// last_signal = 0
+// Buy_final = BuyCondition and (nz(last_signal[1]) == 0 or nz(last_signal[1]) == -1)
+// Sell_final = SellCondition and (nz(last_signal[1]) == 0 or nz(last_signal[1]) == 1)
+// last_signal := Buy_final ? 1 : Sell_final ? -1 : last_signal[1]
+
+// //plotshape(Buy_final, style=shape.cross, location=location.belowbar, color=color.new(#0814BF, 0), size=size.small)
+// //plotshape(Sell_final, style=shape.cross, location=location.abovebar, color=color.new(#BF0000, 0), size=size.small)
+
+
+// BuyHigh = ta.valuewhen(Buy_final, high, 0)
+// ShortLow = ta.valuewhen(Sell_final, low, 0)
+
+// eBuy = last_signal > 0 and close > BuyHigh
+// eShort = last_signal < 0 and close < ShortLow
+
+// LastSignal = 0
+// Buy =  eBuy and (nz(LastSignal[1]) == 0 or nz(LastSignal[1]) == -1)
+// Short = eShort and (nz(LastSignal[1]) == 0 or nz(LastSignal[1]) == 1)
+// LastSignal := Buy ? 1 : Short ? -1 : LastSignal[1]
+
+// plotshape(Buy, style=shape.xcross, location=location.belowbar, color=color.new(#0814BF, 0),size=size.small)
+// plotshape(Short, style=shape.xcross, location=location.abovebar, color=color.new(#BF0000, 0),size=size.small)
+// timeframe = input.timeframe("")
+// if Buy 
+//     alert('Gold Breakout Alert \n\n'+syminfo.ticker+'\n \nBUY SIGNAL\n \nAt price  '+ str.tostring(close)+'\n\nTime frame :=  '+timeframe.period+'',alert.freq_once_per_bar_close)
+
+// if Short
+//     alert('Gold Breakout Alert \n\n'+syminfo.ticker+'\n \nSELL SIGNAL\n \nAt price  '+ str.tostring(close)+'\n\nTime frame :=  '+timeframe.period+'',alert.freq_once_per_bar_close)
+// //
+// buyprice = ta.valuewhen(Buy, high, 0)
+// sellprice = ta.valuewhen(Short, low, 0)
+
+// bfirm = ta.crossover(close, buyprice)
+// sfirm = ta.crossunder(close, sellprice)
+
+// Exrem_Buy_Sell(BUY, SELL) =>
+
+//     buycond = BUY and BUY[1] == 0
+//     sellcond = SELL and SELL[1] == 0
+
+//     bullish = ta.barssince(buycond) < ta.barssince(sellcond)
+//     bearish = ta.barssince(sellcond) < ta.barssince(buycond)
+
+//     buym = bearish[1] and buycond
+//     sellm = bullish[1] and sellcond
+
+//     [buym, sellm]
+
+// [cbuy, ccb] = Exrem_Buy_Sell(bfirm, Buy)
+// [csell, ccs] = Exrem_Buy_Sell(sfirm, Short)
+
+
